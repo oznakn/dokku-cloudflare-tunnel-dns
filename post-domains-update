@@ -14,7 +14,7 @@ if ! which curl >/dev/null 2>&1; then
 fi
 
 record_tpl='{id: .id, name: .name, content: .content}'
-export CF_SERVER_IP=$(config_get --global CF_SERVER_IP || "")
+export CF_TUNNEL_HOST=$(config_get --global CF_TUNNEL_HOST || "")
 export CF_TOKEN=$(config_get --global CF_TOKEN || "")
 export CF_DEBUG=$(config_get --global CF_DEBUG || false)
 
@@ -73,7 +73,7 @@ function create_cf_dns_record() {
   local result=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records" \
     -H "Authorization: Bearer $CF_TOKEN" \
     -H "Content-Type: application/json" \
-    --data "{\"type\":\"A\",\"name\":\"$domain\",\"content\":\"$CF_SERVER_IP\",\"proxied\":true}")
+    --data "{\"type\":\"CNAME\",\"name\":\"$domain\",\"content\":\"$CF_TUNNEL_HOST\",\"proxied\":true}")
 
   if [[ $? -ne 0 ]]; then
     _log "Failed to create DNS record (ZoneID: $zone_id; Domain: $domain)"
@@ -102,7 +102,7 @@ function update_cf_zone() {
   declare desc="Update Cloudflare zone's dns records to reflect dokku domains configuration"
   echo "-----> Configuring Cloudflare Zone DNS"
 
-  if [ -z "$CF_SERVER_IP" ] || [ -z "$CF_TOKEN" ]; then
+  if [ -z "$CF_TUNNEL_HOST" ] || [ -z "$CF_TOKEN" ]; then
     dokku_log_fail "Missing environment variables"
   fi
 
@@ -134,16 +134,16 @@ function update_cf_zone() {
       local existing_record=$(echo "$records" | jq ".[] | select(.name == \""$domain"\") | $record_tpl")
       if [ -z "$existing_record" ]; then
         _log "$domain A record does not exist"
-        _log "creating proxied dns record ($domain -> $CF_SERVER_IP)..."
+        _log "creating proxied dns record ($domain -> $CF_TUNNEL_HOST)..."
         create_cf_dns_record $zone_id $domain
       else
         local record_content=$(echo "$existing_record" | jq -r '.content')
-        if [ $record_content != "$CF_SERVER_IP" ]; then
-          _log "dns record content ($record_content) for $domain does not match server ip $CF_SERVER_IP..."
+        if [ $record_content != "$CF_TUNNEL_HOST" ]; then
+          _log "dns record content ($record_content) for $domain does not match server ip $CF_TUNNEL_HOST..."
           local record_id=$(echo "$existing_record" | jq -r '.id')
           _log "deleting dns record $record_id ($domain -> $record_content)..."
           delete_cf_dns_record $zone_id $record_id
-          _log "creating proxied dns record ($domain -> $CF_SERVER_IP)..."
+          _log "creating proxied dns record ($domain -> $CF_TUNNEL_HOST)..."
           create_cf_dns_record $zone_id $domain
         else
           _log "skipping $domain as record content is up to date..."
